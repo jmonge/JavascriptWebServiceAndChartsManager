@@ -1,0 +1,254 @@
+<!DOCTYPE html> 
+<html>
+<head>
+<meta charset="utf-8">
+<title>Demo</title>
+
+<link href="http://code.jquery.com/mobile/1.0/jquery.mobile-1.0.min.css" rel="stylesheet" type="text/css"/>
+<script src="http://code.jquery.com/jquery-1.6.4.min.js" type="text/javascript"></script>
+<script src="http://code.jquery.com/mobile/1.0/jquery.mobile-1.0.min.js" type="text/javascript"></script>
+<script type="text/javascript" src="https://maps.googleapis.com/maps/api/js?v=3.exp&sensor=false"></script>
+
+<!-- Charting -->
+<!--<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>-->
+<script type="text/javascript" src="./chartinglib/jquery.jqplot.min.js"></script>
+<script type="text/javascript" src="./chartinglib/plugins/jqplot.barRenderer.min.js"></script>
+<script type="text/javascript" src="./chartinglib/plugins/jqplot.categoryAxisRenderer.min.js"></script>
+<script type="text/javascript" src="./chartinglib/plugins/jqplot.pointLabels.min.js"></script>
+<link rel="stylesheet" type="text/css" hrf="./chartinglib/jquery.jqplot.min.css" />
+
+<!-- MyLibs -->
+<script type="text/javascript" src="./mylibs/datastructures.js"></script>
+<script type="text/javascript" src="./mylibs/charts.js"></script>
+<script type="text/javascript" src="./mylibs/webservice.js"></script>
+
+<script type="text/javascript">
+
+        // vars init
+        var lstFeatures = new FeatureList();
+        var lstFeaturesWithCount = new FeatureList();
+        var m_markers;
+        // end vars init
+
+        // Google Maps init ************************************************
+        var m_map;
+        function initialize() {
+            var mapOptions = {
+                zoom: 19,
+                center: new google.maps.LatLng(18.43012, -66.05778),
+                mapTypeId: google.maps.MapTypeId.SATELLITE
+            };
+
+            m_map = new google.maps.Map(document.getElementById('map-canvas'), mapOptions);
+
+            google.maps.event.addListener(m_map, 'idle', InitSimpleLocByBoundsService);
+        }
+
+        google.maps.event.addDomListener(window, 'load', initialize);
+        // End Google Maps init ************************************************
+
+        // SimpleLocByBoundsService: Web Service Call ****************************************************
+        
+        function InitSimpleLocByBoundsService() {
+            var bounds = m_map.getBounds();
+
+            var ne = bounds.getNorthEast();
+            var sw = bounds.getSouthWest();
+
+            var southWestLatitude = sw.lat();
+            var southWestLongitude = sw.lng();
+            var northEastLatitude = ne.lat();
+            var northEastLongitude = ne.lng();
+            
+            var locGroupFilter = [6];
+            CallService(SimpleLocByBoundsOnSuccess, SimpleLocByBoundsOnError,
+                southWestLatitude,
+                southWestLongitude,
+                northEastLatitude,
+                northEastLongitude,
+                locGroupFilter,
+                GLOBAL_SimpleLocByBoundsSoapMessage);
+        }
+
+        function SimpleLocByBoundsOnSuccess(data, status) {
+
+            // always have the most recent features.
+            lstFeatures.Clear();
+
+            if (m_markers && m_markers.length !== 0) {
+                for (var i = 0; i < m_markers.length; ++i) {
+                    m_markers[i].setMap(null);
+                }
+
+                m_markers = null;
+            }
+
+            m_markers = [];
+
+            $(data)
+         .find('SimpleLocationSpatialSearchByBoundsResult').find('SimpleLocation')
+                .each(function () {
+                    var name = $(this).find('Name').text();
+                    var latitude = $(this).find('Latitude').text();
+                    var longitude = $(this).find('Longitude').text();
+
+                    var point = new google.maps.LatLng(parseFloat(latitude), parseFloat(longitude));
+
+                    var marker = new google.maps.Marker({ position: point, title: name, map: m_map });
+
+                    m_markers.push(marker);
+
+                    // populate the list that will contain the reference of the features.
+                    var ft = new Feature(
+                                $(this).find('LocationID').text(),
+                                $(this).find('LocationTypeEnumCode').text(),
+                                $(this).find('LocationGroupEnumCode').text(),
+                                name,
+                                $(this).find('City').text(),
+                                $(this).find('Custom').text(),
+                                -1,
+                                -1);
+
+                    lstFeatures.AddItem(ft);
+
+                });
+        }
+
+        function SimpleLocByBoundsOnError(request, status, error) {
+            alert('error: ' + status + ' - ' + error);
+        }
+
+        // END Web Service Call ************************************************
+        
+        // SimpleLocByBoundsService: Web Service Call **************************
+
+        // used for the charts
+        function InitCrimeTypesCountService() {
+            var bounds = m_map.getBounds();
+
+            var ne = bounds.getNorthEast();
+            var sw = bounds.getSouthWest();
+
+            var southWestLatitude = sw.lat();
+            var southWestLongitude = sw.lng();
+            var northEastLatitude = ne.lat();
+            var northEastLongitude = ne.lng();
+
+            var locGroupFilter = [6]; // required for this one
+            CallService(CrimeTypesCountOnSuccess, CrimeTypesCountOnError,
+                southWestLatitude,
+                southWestLongitude,
+                northEastLatitude,
+                northEastLongitude,
+                locGroupFilter,
+                GLOBAL_CrimeTypesCountSoapMessage);
+        }
+
+        function CrimeTypesCountOnSuccess(data, status) {
+
+            // always have the most recent features.
+            lstFeaturesWithCount.Clear();
+
+            $(data)
+            .find('SimpleLocationSummaryByBoundsResult').find('SimpleLocationSummary')
+                .each(function () {
+
+                    // populate the list that will contain the reference of the features.
+                    var ft = new FeatureFieldWithCount(
+                                $(this).find('RecordCount').text(),
+                                $(this).find('Custom').text());
+
+                    lstFeaturesWithCount.AddItem(ft);
+                });
+
+                // call chart
+                InitCrimeTypesCountService('SampleChart', lstFeaturesWithCount);
+        }
+
+        function CrimeTypesCountOnError(request, status, error) {
+            alert('error: ' + status + ' - ' + error);
+        }
+
+        // SimpleLocByBoundsService: End Web Service Call **************************
+
+        $(document).ready(function () {
+            jQuery.support.cors = true;
+
+        });
+               
+        function FillDataFromList() {
+            var data = "<strong>Selected Data</strong> <br/><br/>";
+            if(lstFeatures != null){
+                data += "Features: " + lstFeatures.GetItemCount() + "<br/>";
+                for (var i = 0; i < lstFeatures.GetItemCount(); i++) {                    
+                    data += "Location Id = " + lstFeatures.GetItem(i).LocationId + "<br/>";
+                    data += "LocationTypeEnumCode = " + lstFeatures.GetItem(i).LocationTypeEnumCode + "<br/>";
+                    data += "LocationGroupEnumCode = " + lstFeatures.GetItem(i).LocationGroupEnumCode + "<br/>";
+                    data += "Name = " + lstFeatures.GetItem(i).Name + "<br/>";
+                    data += "City = " + lstFeatures.GetItem(i).City + "<br/>";
+                    data += "CrimeType = " + lstFeatures.GetItem(i).Custom + "<br/>";
+
+                    data += "<br/> ------------------- <br/><br/>";
+                }
+            }
+
+            $("#divMainShowArrayData").html(data);   
+        }
+
+    </script>
+
+</head> 
+<body> 
+
+<div data-role="page" id="page">
+	<div data-role="header">
+		<h1>Map Locator</h1>
+	</div>
+	<div data-role="content">
+		
+        <div data-role="collapsible-set">
+	    	<div data-role="collapsible">
+	      		<h3>Opciones</h3>
+	      			<a href="#" data-role="button" data-icon="search">Busqueda</a>
+          			<a href="#" data-role="button" data-icon="plus">Añadir Punto</a>
+                    <a href="#" data-role="button" data-icon="info">Incidencias</a>
+                    
+        	</div>
+      	</div>	
+
+		<div id="map-canvas" style="width:100%; height:350px;" align="center"></div>	
+
+        <div>
+        	<a href="#" data-role="button" onClick="InitSimpleLocByBoundsService(); return false;" data-icon="refresh">Fill Map</a>
+
+            <!-- cambia de pagina, no hace popUp -->
+            <a href="#divPopupChart" data-rel="popup" data-role="button" data-icon="info" 
+                onclick="InitCrimeTypesCountService()">Show Chart</a>
+                
+            <a href="#divPopupShowArrayData" data-rel="popup" data-role="button" data-icon="info" 
+                onclick="FillDataFromList();">Show Features Data</a>
+
+        </div>
+
+	</div>
+  
+	
+</div>
+
+        <!-- Modals -->
+        <!-- chart modal -->
+        <div data-role="popup" id="divPopupChart">
+           
+            <div id="SampleChart" style="width:100%; height:250px;">
+            </div>
+
+        </div> 
+
+        <!-- showdata modal -->
+        <div data-role="popup" id="divPopupShowArrayData">           
+            <div id="divMainShowArrayData">                      
+            </div>
+        </div> 
+
+</body>
+</html>
